@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { FlaskConical, Calculator, FlaskRound, Droplet } from "lucide-react";
+import { useState } from "react";
+import { FlaskConical, Calculator, FlaskRound } from "lucide-react";
 
 export default function App() {
   const [view, setView] = useState("calcolatore");
@@ -33,15 +33,10 @@ function ProtocolloPMDD() {
           <FlaskRound className="w-5 h-5" /> Preparazione
         </h2>
         <p>Ora ci servono due bottiglie da un litro per NK e magnesio; e una da mezzo litro per il ferro. Le bottiglie non devono essere trasparenti (per evitare che passi la luce, formando alghe). Alcuni le rivestono con alluminio Domopak o simili.</p>
-
         <p>Nella prima bottiglia da un litro metteremo 250 grammi di nitrato di potassio, fino a ¾, agiteremo vigorosamente fino allo scioglimento e finiremo di riempire la bottiglia fino al limite. Avremo ottenuto un integratore al 13%, con quasi il 10% di potassio e solo il 3% di azoto.</p>
-
         <p>Gli effetti di tale soluzione li vedremo meglio più avanti, nell’appendice in fondo a questo articolo. Per adesso vi segnalo che è un po’ difficile da sciogliere, ma potete usare acqua calda, oppure un frullatore. In alternativa, riducete il dosaggio a 200 g. Le percentuali si ridurranno in proporzione.</p>
-
         <p>Nella seconda bottiglia da un litro verseremo 10 bustine di sale inglese (300 g) procedendo allo stesso modo. Si scioglierà molto meglio perché eptaidrato (contiene già acqua per oltre metà). Alla fine avremo una soluzione con il 3% di Magnesio e il 4% di Zolfo.</p>
-
         <p>Come abbiamo visto, lo zolfo dovrebbe essere la metà del magnesio, quindi avremo un eccesso. Non c’è problema, capita con tutti i fertilizzanti, anche quelli commerciali. Lo zolfo è un elemento molto ben tollerato, sia dalle piante che dai pesci; se fosse solo per lui, basterebbe un cambio d’acqua ogni sei mesi per rimettersi a posto.</p>
-
         <p>Sciogliete ora la bustina del ferro in mezzo litro d’acqua utilizzando la terza bottiglia (quella da mezzo litro). Se avete trovato del ferro liquido, lasciate tutto come sta.</p>
       </div>
     </div>
@@ -50,18 +45,65 @@ function ProtocolloPMDD() {
 
 function CalcolatorePMDD() {
   const [volume, setVolume] = useState("");
-  const [valoriAttuali, setValoriAttuali] = useState({ no3: "", po4: "", kh: "", gh: "" });
+  const [valoriAttuali, setValoriAttuali] = useState({ no3: "", po4: "", kh: "", gh: "", fe: "" });
   const [fertilizzanti, setFertilizzanti] = useState([
-    { nome: "Azoto NK Plus", dose: "", concentrazione: 23.98, effetto: "NO3-" },
-    { nome: "Magnesio PMDD", dose: "", concentrazione: 2.47, effetto: "Mg+" },
-    { nome: "Ferro PMDD", dose: "", concentrazione: 0.025, effetto: "Fe" },
-    { nome: "Cifo Fosforo (azoto ureico)", dose: "", concentrazione: 1.81, effetto: "PO4-" }
+    { nome: "Azoto NK Plus", concentrazione: 23.98, effetto: "NO3-" },
+    { nome: "Magnesio PMDD", concentrazione: 2.47, effetto: "Mg+" },
+    { nome: "Ferro PMDD", concentrazione: 20, effetto: "Fe" }, // <-- aggiornato!
+    { nome: "Cifo Fosforo (azoto ureico)", concentrazione: 1.81, effetto: "PO4-" }
   ]);
+  const [report, setReport] = useState([]);
+  const [redfieldMsg, setRedfieldMsg] = useState("");
 
-  const handleDoseChange = (index, newDose) => {
-    const updated = [...fertilizzanti];
-    updated[index].dose = newDose;
-    setFertilizzanti(updated);
+  const calcolaFertilizzanti = () => {
+    if (!volume || isNaN(volume)) return;
+
+    const no3 = parseFloat(valoriAttuali.no3);
+    const po4 = parseFloat(valoriAttuali.po4);
+    const fe = parseFloat(valoriAttuali.fe || "0");
+
+    const rapportoIdeale = 10;
+    const risultati = [];
+    let msg = "";
+
+    // NO₃ / PO₄ - Redfield ratio
+    if (!isNaN(no3) && !isNaN(po4) && po4 > 0) {
+      const rapporto = no3 / po4;
+      msg += `🔎 Rapporto Redfield NO₃/PO₄ = ${rapporto.toFixed(1)} (ideale ≈ 10)\n`;
+
+      if (rapporto < 9.5) {
+        const targetNO3 = po4 * rapportoIdeale;
+        const mg = targetNO3 - no3;
+        const azoto = fertilizzanti.find(f => f.effetto === "NO3-");
+        const ml = ((mg * volume) / azoto.concentrazione).toFixed(2);
+        msg += `💡 Aggiungi **Azoto (NO₃⁻)**: ${mg.toFixed(2)} mg/l → **${ml} ml** di ${azoto.nome}\n`;
+        risultati.push({ nome: azoto.nome, dose: ml, effetto: azoto.effetto });
+      } else if (rapporto > 10.5) {
+        const targetPO4 = no3 / rapportoIdeale;
+        const mg = targetPO4 - po4;
+        const fosforo = fertilizzanti.find(f => f.effetto === "PO4-");
+        const ml = ((mg * volume) / fosforo.concentrazione).toFixed(2);
+        msg += `💡 Aggiungi **Fosforo (PO₄³⁻)**: ${mg.toFixed(2)} mg/l → **${ml} ml** di ${fosforo.nome}\n`;
+        risultati.push({ nome: fosforo.nome, dose: ml, effetto: fosforo.effetto });
+      } else {
+        msg += "✅ Il rapporto NO₃/PO₄ è già equilibrato.\n";
+      }
+    } else {
+      msg += "⚠️ Inserisci valori validi per NO₃ e PO₄.\n";
+    }
+
+    // Ferro
+    if (!isNaN(fe) && fe < 0.03) {
+      const targetFe = 0.05;
+      const mg = targetFe - fe;
+      const ferro = fertilizzanti.find(f => f.effetto === "Fe");
+      const ml = ((mg * volume) / ferro.concentrazione).toFixed(2);
+      msg += `💡 Aggiungi **Ferro (Fe)**: ${mg.toFixed(2)} mg/l → **${ml} ml** di ${ferro.nome}`;
+      risultati.push({ nome: ferro.nome, dose: ml, effetto: ferro.effetto });
+    }
+
+    setRedfieldMsg(msg.trim());
+    setReport(risultati);
   };
 
   return (
@@ -90,22 +132,31 @@ function CalcolatorePMDD() {
         </div>
       ))}
 
-      <h2 className="text-sm font-semibold">Fertilizzanti (ml)</h2>
-      {fertilizzanti.map((f, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <label className="flex-1 text-sm">{f.nome}</label>
-          <input
-            type="number"
-            value={f.dose}
-            onChange={e => handleDoseChange(i, e.target.value)}
-            className="w-24 p-2 rounded border"
-          />
-        </div>
-      ))}
-
-      <button className="w-full p-3 bg-blue-600 text-white rounded font-semibold">
+      <button
+        onClick={calcolaFertilizzanti}
+        className="w-full p-3 bg-blue-600 text-white rounded font-semibold"
+      >
         Calcola
       </button>
+
+      {redfieldMsg && (
+        <div className="text-sm mt-4 p-3 bg-yellow-100 border-l-4 border-yellow-500 rounded whitespace-pre-wrap">
+          {redfieldMsg}
+        </div>
+      )}
+
+      {report.length > 0 && (
+        <div className="mt-6 space-y-2">
+          <h2 className="text-sm font-bold">💊 Da dosare:</h2>
+          <ul className="space-y-1 text-sm list-disc list-inside">
+            {report.map((r, i) => (
+              <li key={i}>
+                {r.nome}: <strong>{r.dose} ml</strong> → effetto su <code>{r.effetto}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
